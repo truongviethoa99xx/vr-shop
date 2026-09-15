@@ -12,6 +12,11 @@ occupies in the two target repos:
 | `ecommerce-be/src/showroom/**` | [`truongviethoa99xx/Ecommerce-BE`](https://github.com/truongviethoa99xx/Ecommerce-BE) → `src/showroom/` |
 | `ecommerce-ui/src/showroom-3d/**` | [`truongviethoa99xx/Ecommerce-UI`](https://github.com/truongviethoa99xx/Ecommerce-UI) → `src/showroom-3d/` |
 
+**Fastest path: Docker.** `AGENTS.md` is a step-by-step runbook that brings up
+Postgres, the API and the web app with two commands, and it applies the two
+integration patches for you. The manual path below is for integrating into an
+existing checkout instead.
+
 `vr-shop` was empty (one commit, one empty `READ.ME`), and this session had
 read-only access to both target repos, so the module is delivered here rather
 than committed into them.

@@ -1,0 +1,40 @@
+# Ecommerce-BE + the showroom module.
+# Build context is a checkout of Ecommerce-BE that already has src/showroom/
+# copied in and app.module.ts patched (scripts/setup-workspace.sh does both).
+
+FROM node:20-bookworm-slim AS builder
+WORKDIR /app
+
+# bcrypt is a native module; these are needed if npm has no prebuild for this
+# platform. Kept in the builder stage only.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package*.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY . .
+RUN npm run build \
+  # Drop dev deps but keep the already-compiled native binaries, which match
+  # this base image.
+  && npm prune --omit=dev
+
+FROM node:20-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json ./package.json
+# No source is copied: showroom.module.ts imports the migration class directly,
+# so SHOWROOM_RUN_MIGRATIONS runs it from dist/. (The TypeORM CLI path in
+# INTEGRATION.md needs ts-node, which npm prune removes - use it outside Docker.)
+
+EXPOSE 3000
+
+# No curl/wget in slim, so probe with node itself.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=40s --retries=6 \
+  CMD node -e "require('http').get('http://127.0.0.1:3000/api',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"
+
+CMD ["node", "dist/main"]

@@ -1,0 +1,80 @@
+# Showroom 3D — full stack: Postgres + NestJS API + nginx-served React build.
+#
+# Run scripts/setup-workspace.sh first: it clones Ecommerce-BE and Ecommerce-UI
+# into ./workspace/, copies the showroom module into each, and applies the two
+# integration patches. The build contexts below point at those checkouts.
+
+name: showroom-3d
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-ecommerce_db}
+    ports:
+      # Host port defaults to 5433 so it does not collide with a local Postgres.
+      - "${DB_PORT_HOST:-5433}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-ecommerce_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  api:
+    build:
+      # setup-workspace.sh copies docker/Dockerfile.api in as ./Dockerfile, so
+      # the Dockerfile always sits inside its own context - a path escaping the
+      # context with ../ is not portable across builders.
+      context: ./workspace/Ecommerce-BE
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # `db` is the compose service name, resolvable inside the network.
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-ecommerce_db}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required - copy .env.docker.example to .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      API_TITLE: E-commerce API
+      API_DESCRIPTION: E-commerce Backend API
+      API_VERSION: "1.0"
+      # Creates the three showroom tables on boot. Safe to leave on: TypeORM
+      # skips migrations it has already recorded.
+      SHOWROOM_RUN_MIGRATIONS: "true"
+      SHOWROOM_DB_POOL_MAX: ${SHOWROOM_DB_POOL_MAX:-5}
+    ports:
+      - "${API_PORT:-3000}:3000"
+
+  web:
+    build:
+      context: ./workspace/Ecommerce-UI
+      args:
+        # Build-time only — Vite inlines these into the bundle. Changing them
+        # requires `docker compose build web`, not just a restart.
+        VITE_MATTERPORT_MODEL_SID: ${VITE_MATTERPORT_MODEL_SID:-}
+        VITE_MATTERPORT_SDK_KEY: ${VITE_MATTERPORT_SDK_KEY:-}
+        # Reached by the visitor's BROWSER, so it must be a host-published URL.
+        # `http://api:3000` would not resolve outside the compose network.
+        VITE_SHOWROOM_API_BASE: ${VITE_SHOWROOM_API_BASE:-http://localhost:3000}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+volumes:
+  db-data:

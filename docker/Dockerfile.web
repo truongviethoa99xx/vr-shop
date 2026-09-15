@@ -1,0 +1,29 @@
+# Ecommerce-UI + the showroom-3d route, built and served by nginx.
+# Build context is a checkout of Ecommerce-UI that already has
+# src/showroom-3d/ copied in and App.jsx patched.
+
+FROM node:20-bookworm-slim AS builder
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --no-audit --no-fund
+
+# Vite inlines env vars at BUILD time - they cannot be injected at runtime, so
+# they arrive as build args, not as `environment:` in compose.
+ARG VITE_MATTERPORT_MODEL_SID=""
+ARG VITE_MATTERPORT_SDK_KEY=""
+ARG VITE_SHOWROOM_API_BASE="http://localhost:3000"
+ENV VITE_MATTERPORT_MODEL_SID=$VITE_MATTERPORT_MODEL_SID \
+    VITE_MATTERPORT_SDK_KEY=$VITE_MATTERPORT_SDK_KEY \
+    VITE_SHOWROOM_API_BASE=$VITE_SHOWROOM_API_BASE
+
+COPY . .
+RUN npm run build
+
+FROM nginx:1.27-alpine AS runtime
+COPY docker-nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist /usr/share/nginx/html
+EXPOSE 80
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=5 \
+  CMD wget -q --spider http://127.0.0.1/ || exit 1

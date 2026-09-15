@@ -1,0 +1,9 @@
+# Cloned target repos, created by scripts/setup-workspace.sh
+workspace/
+
+# Local secrets
+.env
+.env.local
+
+node_modules/
+dist/
